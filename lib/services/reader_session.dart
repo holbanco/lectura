@@ -335,7 +335,7 @@ class ReaderSession extends ChangeNotifier {
 
   Future<void> _configureOfflineTts() async {
     await _offlineTts.awaitSpeakCompletion(false);
-    _offlineTts.setProgressHandler((_, start, end, __) {
+    _offlineTts.setProgressHandler((_, _, end, _) {
       if (_book.engine != ReadingEngine.offline || _manualStop) return;
       _currentCharacter = (_spokenBase + end).clamp(0, _text.length).toInt();
       _safeNotify();

@@ -130,7 +130,9 @@ class DocumentImporter {
     if (entry == null) {
       throw const DocumentImportException('Documentul DOCX este invalid.');
     }
-    final xml = XmlDocument.parse(utf8.decode(entry.readBytes(), allowMalformed: true));
+    final xml = XmlDocument.parse(
+      utf8.decode(_archiveBytes(entry), allowMalformed: true),
+    );
     final output = StringBuffer();
     for (final paragraph in xml.descendantElements.where(
       (element) => element.name.local == 'p',
@@ -151,7 +153,7 @@ class DocumentImporter {
       throw const DocumentImportException('Fișierul EPUB este invalid.');
     }
     final containerXml = XmlDocument.parse(
-      utf8.decode(container.readBytes(), allowMalformed: true),
+      utf8.decode(_archiveBytes(container), allowMalformed: true),
     );
     final rootFile = containerXml.descendantElements
         .where((element) => element.name.local == 'rootfile')
@@ -166,7 +168,7 @@ class DocumentImporter {
     }
 
     final packageXml = XmlDocument.parse(
-      utf8.decode(packageFile.readBytes(), allowMalformed: true),
+      utf8.decode(_archiveBytes(packageFile), allowMalformed: true),
     );
     final manifest = <String, String>{};
     for (final item in packageXml.descendantElements.where(
@@ -189,7 +191,7 @@ class DocumentImporter {
       final contentFile = _findArchiveFile(archive, fullPath);
       if (contentFile == null) continue;
       final chapter = _extractHtml(
-        utf8.decode(contentFile.readBytes(), allowMalformed: true),
+        utf8.decode(_archiveBytes(contentFile), allowMalformed: true),
       );
       if (chapter.trim().isNotEmpty) {
         output
@@ -223,6 +225,16 @@ class DocumentImporter {
       final candidate = path.posix.normalize(file.name).replaceAll('\\', '/');
       return candidate == wanted;
     }).firstOrNull;
+  }
+
+  static Uint8List _archiveBytes(ArchiveFile file) {
+    final bytes = file.readBytes();
+    if (bytes == null) {
+      throw const DocumentImportException(
+        'Arhiva documentului conține un fișier care nu poate fi citit.',
+      );
+    }
+    return bytes;
   }
 
   static String _decodeText(Uint8List bytes) {

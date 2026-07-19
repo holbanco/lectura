@@ -262,13 +262,13 @@ class DocumentImporter {
         .trim();
     if (_looksLikeLegacyRomanian(normalized)) {
       normalized = normalized
-          .replaceAll('Ń', 'Ț')
+          .replaceAll('Ń', 'ț')
           .replaceAll('ń', 'ț')
           .replaceAll('Ţ', 'Ț')
           .replaceAll('ţ', 'ț')
           .replaceAll('Ş', 'Ș')
           .replaceAll('ş', 'ș')
-          .replaceAll('Ã', 'Ă')
+          .replaceAll('Ã', 'ă')
           .replaceAll('ã', 'ă');
     }
     return normalized;

@@ -1,0 +1,29 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Complete Flutter runner files
+        run: |
+          runner_dir="$(mktemp -d)/lectura_runner"
+          flutter create --no-pub --platforms=android --org ro.holban --project-name lectura "$runner_dir"
+          cp -R -n "$runner_dir/android/." android/
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
+      - run: flutter build apk --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lectura-android-apk
+          path: build/app/outputs/flutter-apk/app-release.apk

@@ -503,7 +503,7 @@ class ReaderSession extends ChangeNotifier {
         _book.preset == NarrationPreset.evening) {
       return _book.preset;
     }
-    final dialogueMarks = RegExp('[„”«»\"]|(^|\n)\\s*[—–-]\\s+')
+    final dialogueMarks = RegExp('[„”«»"]|(^|\n)\\s*[—–-]\\s+')
         .allMatches(chunk.text)
         .length;
     final emotionalMarks = RegExp('[!?…]').allMatches(chunk.text).length;

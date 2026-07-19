@@ -2,31 +2,41 @@
 
 Lectura este o aplicație personală Android-first care transformă cărți și documente în audio. Codul Flutter este comun pentru Android și iPhone.
 
-## Ce funcționează în MVP
+## Ce funcționează în versiunea 1.0
 
-- import local pentru PDF cu text selectabil, EPUB, DOCX, TXT, Markdown și HTML;
+- import local pentru PDF, EPUB, DOCX, TXT, Markdown, HTML și imagini;
+- OCR local pentru paginile PDF scanate și fotografii;
 - extragerea capitolelor EPUB în ordinea de lectură și a paragrafelor DOCX;
-- bibliotecă locală, progres salvat și reluare de unde ai rămas;
+- coperți, capitole navigabile, bibliotecă locală și progres salvat;
+- deschidere directă din meniul Android „Open with / Share”;
 - împărțire inteligentă pe fragmente, fără tăierea propozițiilor când este posibil;
-- mod **Offline**, folosind vocile instalate pe telefon;
-- mod **Studio**, cu 13 voci neurale și regie de lectură;
+- mod **Neural local**, cu română și 10 stiluri de voce, fără cost pe minut;
+- buffer anticipat cu două fragmente și playlist audio fără pauza de generare dintre ele;
+- pregătirea integrală a unei cărți pentru ascultare offline;
+- mod **Telefon**, folosind vocile instalate pe dispozitiv;
+- mod opțional **OpenAI Premium**, cu Fable și alte voci neurale;
 - profil automat per document: ficțiune, business, tehnic, dramatic, seară sau natural;
 - alegerea manuală a vocii, stilului și vitezei;
-- cache local pentru audio Studio deja generat;
+- cache local pentru audio deja generat; schimbarea vitezei nu regenerează audio;
+- redare în fundal, notificare media, controale pe ecranul blocat și temporizator de somn;
 - temă luminoasă/întunecată după setarea telefonului;
 - Android și cod compatibil iOS.
 
-## Cele două motoare de voce
+## Cele trei motoare de voce
 
-### Offline
+### Neural local — recomandat
+
+Folosește Supertonic 3 pentru a genera vocea direct pe dispozitiv. Modelul de aproximativ 400 MB se descarcă o singură dată, numai după confirmarea utilizatorului. După aceea, nu există cost pe fragment și textul nu este trimis unui serviciu vocal.
+
+### Telefon
 
 Nu trimite textul nicăieri și nu costă nimic. Folosește motorul TTS și pachetele de limbă instalate pe Android/iOS. Calitatea depinde de telefon și vocea instalată.
 
-### Studio
+### OpenAI Premium
 
 Folosește modelul `gpt-4o-mini-tts`. Aplicația trimite doar fragmentul curent pentru generarea audio, apoi păstrează rezultatul local. Utilizatorul este informat în aplicație că vocea este generată de AI.
 
-Apelurile Studio necesită internet și pot genera costuri în contul API. Modul Offline rămâne gratuit și complet local.
+Apelurile OpenAI necesită internet și generează costuri în contul API. Aplicația nu preîncarcă fragmente Premium, iar cărțile care foloseau vechiul mod Studio sunt migrate automat la Neural local la actualizare.
 
 Cheia API este păstrată în Android Keystore / Apple Keychain. Această soluție BYOK este destinată instalării personale. Înainte de distribuirea publică, apelul trebuie trecut printr-un backend care păstrează cheia în afara aplicației.
 
@@ -76,13 +86,12 @@ flutter build ios --release
 
 Build-ul final și instalarea necesită un Mac cu Xcode și un Apple ID. Pentru instalare permanentă/distribuție este necesar Apple Developer Program.
 
-## Limite cunoscute ale MVP-ului
+## Limite cunoscute
 
-- PDF-urile scanate ca imagini nu au încă OCR;
 - fișierele vechi `.doc` și cărțile EPUB cu DRM nu sunt acceptate;
-- stilul se aplică per document, nu câte o voce distinctă pentru fiecare personaj;
+- modelul neural local ocupă aproximativ 400 MB și poate genera mai lent pe telefoane vechi;
+- stilul se adaptează lecturii, dar nu atribuie încă o voce complet diferită fiecărui personaj;
 - documentele foarte mari sunt extrase în memorie la import;
-- redarea poate continua când aplicația intră în fundal, dar controalele media de pe ecranul blocat și un serviciu Android foreground dedicat sunt planificate pentru versiunea următoare;
 - o cheie API în aplicația personală este protejată de sistemul de operare, dar nu trebuie folosită într-un APK distribuit public.
 
 ## Structură
@@ -96,12 +105,8 @@ lib/
 test/            teste pentru chunking, detecția stilului și persistență
 ```
 
-## Următoarea versiune recomandată
+## Direcții viitoare
 
-1. OCR local pentru PDF-uri scanate și poze;
-2. background audio complet cu notificare și controale pe lock screen;
-3. „Director AI” care detectează personaje și atribuie voci diferite dialogurilor;
-4. import din meniul Android „Share/Open with Lectura”;
-5. copertă și capitole navigabile;
-6. pregătirea integrală a unei cărți pentru ascultare offline;
-7. backend securizat și cont dacă aplicația va fi oferită și altor persoane.
+- voci distincte pentru personaje și dialog;
+- backend și cont doar dacă aplicația va fi distribuită public;
+- build iOS semnat și testat pe dispozitiv Apple.

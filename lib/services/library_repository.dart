@@ -13,6 +13,7 @@ class LibraryRepository {
   late final Directory _root;
   late final Directory _textDirectory;
   late final Directory _audioDirectory;
+  late final Directory _coverDirectory;
   late final File _indexFile;
   final List<BookDocument> _books = [];
 
@@ -24,11 +25,13 @@ class LibraryRepository {
     _root = Directory(path.join(documents.path, 'lectura'));
     _textDirectory = Directory(path.join(_root.path, 'texts'));
     _audioDirectory = Directory(path.join(_root.path, 'audio_cache'));
+    _coverDirectory = Directory(path.join(_root.path, 'covers'));
     _indexFile = File(path.join(_root.path, 'library.json'));
     await Future.wait([
       _root.create(recursive: true),
       _textDirectory.create(recursive: true),
       _audioDirectory.create(recursive: true),
+      _coverDirectory.create(recursive: true),
     ]);
     await _loadIndex();
   }
@@ -41,6 +44,7 @@ class LibraryRepository {
       imported.text,
       imported.originalFileName,
     );
+    final coverFileName = imported.coverBytes == null ? null : '$id.jpg';
     final book = BookDocument(
       id: id,
       title: imported.title,
@@ -53,9 +57,16 @@ class LibraryRepository {
       preset: detected,
       studioVoice: detected.recommendedVoice,
       colorSeed: imported.title.hashCode.abs() % 6,
+      chapters: imported.chapters,
+      coverFileName: coverFileName,
+      usedOcr: imported.usedOcr,
     );
     await File(path.join(_textDirectory.path, textFileName))
         .writeAsString(imported.text, flush: true);
+    if (coverFileName != null) {
+      await File(path.join(_coverDirectory.path, coverFileName))
+          .writeAsBytes(imported.coverBytes!, flush: true);
+    }
     _books.insert(0, book);
     await _writeIndex();
     return book;
@@ -71,6 +82,11 @@ class LibraryRepository {
     return normalized;
   }
 
+  File? coverFile(BookDocument book) {
+    final name = book.coverFileName;
+    return name == null ? null : File(path.join(_coverDirectory.path, name));
+  }
+
   Future<void> update(BookDocument updated) async {
     final index = _books.indexWhere((book) => book.id == updated.id);
     if (index < 0) return;
@@ -83,6 +99,8 @@ class LibraryRepository {
     _books.removeWhere((item) => item.id == book.id);
     final textFile = File(path.join(_textDirectory.path, book.textFileName));
     if (await textFile.exists()) await textFile.delete();
+    final cover = coverFile(book);
+    if (cover != null && await cover.exists()) await cover.delete();
     await for (final entity in _audioDirectory.list()) {
       if (entity is File && path.basename(entity.path).startsWith('${book.id}_')) {
         await entity.delete();

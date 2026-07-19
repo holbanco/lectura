@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import '../core/app_theme.dart';
@@ -5,6 +8,7 @@ import '../models/book_document.dart';
 import '../models/narration_preset.dart';
 import '../services/document_importer.dart';
 import '../services/library_repository.dart';
+import '../services/shared_import_service.dart';
 import 'reader_screen.dart';
 import 'settings_screen.dart';
 
@@ -18,7 +22,25 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final DocumentImporter _importer = DocumentImporter();
+  StreamSubscription<SharedDocument>? _sharedSubscription;
   bool _importing = false;
+  String _importStatus = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _sharedSubscription = SharedImportService.instance.documents.listen(
+      _importSharedDocument,
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      try {
+        final pending = await SharedImportService.instance.initialize();
+        if (pending != null) await _importSharedDocument(pending);
+      } on Object {
+        // The native import channel is Android-only; the file picker still works.
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -51,7 +73,14 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: CircularProgressIndicator(strokeWidth: 2),
               )
             : const Icon(Icons.add_rounded),
-        label: Text(_importing ? 'Se importă…' : 'Adaugă document'),
+        label: Text(
+          _importing && _importStatus.isNotEmpty
+              ? _importStatus
+              : _importing
+                  ? 'Se importă…'
+                  : 'Adaugă document',
+          overflow: TextOverflow.ellipsis,
+        ),
       ),
       body: books.isEmpty ? _emptyLibrary(context) : _library(context, books),
     );
@@ -80,7 +109,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: 12),
             Text(
-              'Adaugă un PDF, EPUB, DOCX sau fișier text. Rămâne în biblioteca privată de pe telefon.',
+              'Adaugă un PDF, EPUB, DOCX, fișier text sau o fotografie. Inclusiv documentele scanate sunt citite local cu OCR.',
               style: Theme.of(context).textTheme.bodyLarge,
               textAlign: TextAlign.center,
             ),
@@ -92,7 +121,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: 16),
             Text(
-              'PDF · EPUB · DOCX · TXT · MD · HTML',
+              'PDF · EPUB · DOCX · TXT · MD · HTML · IMAGINI',
               style: Theme.of(context).textTheme.labelMedium,
             ),
           ],
@@ -110,7 +139,11 @@ class _HomeScreenState extends State<HomeScreen> {
         children: [
           Text('Continuă să asculți', style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 14),
-          _ContinueCard(book: current, onTap: () => _openBook(current)),
+          _ContinueCard(
+            book: current,
+            cover: widget.repository.coverFile(current),
+            onTap: () => _openBook(current),
+          ),
           const SizedBox(height: 32),
           Row(
             children: [
@@ -124,6 +157,7 @@ class _HomeScreenState extends State<HomeScreen> {
           for (final book in books)
             _BookTile(
               book: book,
+              cover: widget.repository.coverFile(book),
               onTap: () => _openBook(book),
               onDelete: () => _confirmDelete(book),
             ),
@@ -133,9 +167,16 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _importDocument() async {
-    setState(() => _importing = true);
+    setState(() {
+      _importing = true;
+      _importStatus = 'Se importă…';
+    });
     try {
-      final imported = await _importer.pickAndExtract();
+      final imported = await _importer.pickAndExtract(
+        onProgress: (progress) {
+          if (mounted) setState(() => _importStatus = progress.label);
+        },
+      );
       if (imported == null || !mounted) return;
       final book = await widget.repository.add(imported);
       if (!mounted) return;
@@ -147,7 +188,45 @@ class _HomeScreenState extends State<HomeScreen> {
         SnackBar(content: Text(error.toString())),
       );
     } finally {
-      if (mounted) setState(() => _importing = false);
+      if (mounted) {
+        setState(() {
+          _importing = false;
+          _importStatus = '';
+        });
+      }
+    }
+  }
+
+  Future<void> _importSharedDocument(SharedDocument shared) async {
+    if (_importing || !mounted) return;
+    setState(() {
+      _importing = true;
+      _importStatus = 'Se deschide…';
+    });
+    try {
+      final imported = await _importer.extractPath(
+        shared.path,
+        displayName: shared.name,
+        onProgress: (progress) {
+          if (mounted) setState(() => _importStatus = progress.label);
+        },
+      );
+      final book = await widget.repository.add(imported);
+      if (!mounted) return;
+      setState(() {});
+      await _openBook(book);
+    } on Object catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.toString())),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _importing = false;
+          _importStatus = '';
+        });
+      }
     }
   }
 
@@ -188,11 +267,22 @@ class _HomeScreenState extends State<HomeScreen> {
       if (mounted) setState(() {});
     }
   }
+
+  @override
+  void dispose() {
+    unawaited(_sharedSubscription?.cancel());
+    super.dispose();
+  }
 }
 
 class _ContinueCard extends StatelessWidget {
-  const _ContinueCard({required this.book, required this.onTap});
+  const _ContinueCard({
+    required this.book,
+    required this.cover,
+    required this.onTap,
+  });
   final BookDocument book;
+  final File? cover;
   final VoidCallback onTap;
 
   @override
@@ -206,7 +296,7 @@ class _ContinueCard extends StatelessWidget {
           padding: const EdgeInsets.all(22),
           child: Row(
             children: [
-              _BookCover(book: book, compact: true),
+              _BookCover(book: book, cover: cover, compact: true),
               const SizedBox(width: 20),
               Expanded(
                 child: Column(
@@ -239,8 +329,14 @@ class _ContinueCard extends StatelessWidget {
 }
 
 class _BookTile extends StatelessWidget {
-  const _BookTile({required this.book, required this.onTap, required this.onDelete});
+  const _BookTile({
+    required this.book,
+    required this.cover,
+    required this.onTap,
+    required this.onDelete,
+  });
   final BookDocument book;
+  final File? cover;
   final VoidCallback onTap;
   final VoidCallback onDelete;
 
@@ -255,7 +351,7 @@ class _BookTile extends StatelessWidget {
           padding: const EdgeInsets.all(14),
           child: Row(
             children: [
-              _BookCover(book: book),
+              _BookCover(book: book, cover: cover),
               const SizedBox(width: 16),
               Expanded(
                 child: Column(
@@ -293,8 +389,9 @@ class _BookTile extends StatelessWidget {
 }
 
 class _BookCover extends StatelessWidget {
-  const _BookCover({required this.book, this.compact = false});
+  const _BookCover({required this.book, required this.cover, this.compact = false});
   final BookDocument book;
+  final File? cover;
   final bool compact;
 
   static const colors = [
@@ -322,19 +419,22 @@ class _BookCover extends StatelessWidget {
           ),
         ],
       ),
-      child: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(10),
-          child: Text(
-            book.title.isEmpty ? 'L' : book.title[0].toUpperCase(),
-            style: TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.w800,
-              fontSize: compact ? 34 : 27,
+      clipBehavior: Clip.antiAlias,
+      child: cover != null && cover!.existsSync()
+          ? Image.file(cover!, fit: BoxFit.cover)
+          : Center(
+              child: Padding(
+                padding: const EdgeInsets.all(10),
+                child: Text(
+                  book.title.isEmpty ? 'L' : book.title[0].toUpperCase(),
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                    fontSize: compact ? 34 : 27,
+                  ),
+                ),
+              ),
             ),
-          ),
-        ),
-      ),
     );
   }
 }

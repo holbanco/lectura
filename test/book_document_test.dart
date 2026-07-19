@@ -15,8 +15,9 @@ void main() {
       characterCount: 1000,
       progressCharacter: 250,
       preset: NarrationPreset.fiction,
-      engine: ReadingEngine.studio,
+      engine: ReadingEngine.openAiPremium,
       studioVoice: 'fable',
+      localVoice: 'F3',
       offlineVoiceName: 'Ioana',
       offlineVoiceLocale: 'ro-RO',
       colorSeed: 3,
@@ -26,8 +27,28 @@ void main() {
 
     expect(restored.title, book.title);
     expect(restored.preset, NarrationPreset.fiction);
-    expect(restored.engine, ReadingEngine.studio);
+    expect(restored.engine, ReadingEngine.openAiPremium);
     expect(restored.studioVoice, 'fable');
+    expect(restored.localVoice, 'F3');
     expect(restored.progress, 0.25);
+  });
+
+  test('migrates the old paid studio mode to the free local engine', () {
+    final json = BookDocument(
+      id: 'legacy',
+      title: 'Legacy',
+      originalFileName: 'legacy.pdf',
+      format: 'PDF',
+      textFileName: 'legacy.txt',
+      importedAt: DateTime.utc(2026),
+      lastOpenedAt: DateTime.utc(2026),
+      characterCount: 100,
+    ).toJson()
+      ..['engine'] = 'studio';
+
+    expect(
+      BookDocument.fromJson(json).engine,
+      ReadingEngine.localNeural,
+    );
   });
 }

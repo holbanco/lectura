@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:just_audio_background/just_audio_background.dart';
 import 'package:pdfrx/pdfrx.dart';
 
 import 'core/app_theme.dart';
@@ -8,6 +9,11 @@ import 'services/library_repository.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   pdfrxFlutterInitialize();
+  await JustAudioBackground.init(
+    androidNotificationChannelId: 'ro.holban.lectura.audio',
+    androidNotificationChannelName: 'Lectură audio',
+    androidNotificationOngoing: true,
+  );
   runApp(const LecturaApp());
 }
 

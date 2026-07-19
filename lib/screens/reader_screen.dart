@@ -4,6 +4,7 @@ import '../core/app_theme.dart';
 import '../models/book_document.dart';
 import '../models/narration_preset.dart';
 import '../services/library_repository.dart';
+import '../services/local_neural_speech_service.dart';
 import '../services/neural_speech_service.dart';
 import '../services/reader_session.dart';
 import 'settings_screen.dart';
@@ -67,6 +68,21 @@ class _ReaderScreenState extends State<ReaderScreen> {
       appBar: AppBar(
         title: Text(_session.book.title, maxLines: 1, overflow: TextOverflow.ellipsis),
         actions: [
+          if (_session.book.chapters.isNotEmpty)
+            IconButton(
+              tooltip: 'Capitole',
+              onPressed: _showChapters,
+              icon: const Icon(Icons.format_list_numbered_rounded),
+            ),
+          IconButton(
+            tooltip: 'Temporizator',
+            onPressed: _showSleepTimer,
+            icon: Icon(
+              _session.sleepEndsAt == null
+                  ? Icons.bedtime_outlined
+                  : Icons.bedtime_rounded,
+            ),
+          ),
           IconButton(
             tooltip: 'Regie și voce',
             onPressed: _showNarrationSettings,
@@ -93,9 +109,18 @@ class _ReaderScreenState extends State<ReaderScreen> {
                         label: _session.book.preset.shortLabel,
                       ),
                       _InfoPill(
-                        icon: _session.isStudio ? Icons.auto_awesome_rounded : Icons.phone_android_rounded,
-                        label: _session.isStudio ? 'Studio · ${_session.book.studioVoice}' : 'Offline',
+                        icon: _session.isStudio
+                            ? Icons.paid_outlined
+                            : _session.isLocalNeural
+                                ? Icons.offline_bolt_rounded
+                                : Icons.phone_android_rounded,
+                        label: _engineLabel,
                       ),
+                      if (_session.book.usedOcr)
+                        const _InfoPill(
+                          icon: Icons.document_scanner_outlined,
+                          label: 'OCR local',
+                        ),
                     ],
                   ),
                   if (_session.errorMessage != null) ...[
@@ -107,12 +132,20 @@ class _ReaderScreenState extends State<ReaderScreen> {
                   ],
                   const SizedBox(height: 28),
                   Text(
-                    'Fragment ${_session.currentChunkIndex + 1} din ${_session.chunks.length}',
+                    [
+                      if (_session.book
+                              .chapterAt(_session.currentCharacter) !=
+                          null)
+                        _session.book
+                            .chapterAt(_session.currentCharacter)!
+                            .title,
+                      'Fragment ${_session.currentChunkIndex + 1} din ${_session.chunks.length}',
+                    ].join(' · '),
                     style: Theme.of(context).textTheme.labelLarge,
                   ),
                   const SizedBox(height: 12),
                   _NarratedText(session: _session),
-                  if (_session.isStudio) ...[
+                  if (_session.usesGeneratedAudio) ...[
                     const SizedBox(height: 22),
                     Row(
                       children: [
@@ -120,7 +153,9 @@ class _ReaderScreenState extends State<ReaderScreen> {
                         const SizedBox(width: 7),
                         Expanded(
                           child: Text(
-                            'Voce generată cu AI. Fragmentul este memorat local după prima redare.',
+                            _session.isLocalNeural
+                                ? 'Vocea este generată pe telefon. Următoarele două fragmente se pregătesc în avans pentru lectură fluidă.'
+                                : 'OpenAI Premium poate genera costuri. Nu pregătim fragmente contra cost în avans.',
                             style: Theme.of(context).textTheme.bodySmall,
                           ),
                         ),
@@ -172,21 +207,37 @@ class _ReaderScreenState extends State<ReaderScreen> {
                 SizedBox(
                   width: double.infinity,
                   child: SegmentedButton<ReadingEngine>(
+                    showSelectedIcon: false,
                     segments: const [
                       ButtonSegment(
                         value: ReadingEngine.offline,
                         icon: Icon(Icons.phone_android_rounded),
-                        label: Text('Offline'),
+                        label: Text('Telefon'),
                       ),
                       ButtonSegment(
-                        value: ReadingEngine.studio,
-                        icon: Icon(Icons.auto_awesome_rounded),
-                        label: Text('Studio'),
+                        value: ReadingEngine.localNeural,
+                        icon: Icon(Icons.offline_bolt_rounded),
+                        label: Text('Neural'),
+                      ),
+                      ButtonSegment(
+                        value: ReadingEngine.openAiPremium,
+                        icon: Icon(Icons.paid_outlined),
+                        label: Text('Premium'),
                       ),
                     ],
                     selected: {_session.book.engine},
-                    onSelectionChanged: (selection) => _session.setEngine(selection.first),
+                    onSelectionChanged: (selection) =>
+                        _selectEngine(selection.first),
                   ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  _session.isLocalNeural
+                      ? 'Gratuit după descărcarea modelului · rulează pe telefon'
+                      : _session.isStudio
+                          ? 'OpenAI Fable · cost pe fiecare fragment nou'
+                          : 'Motorul instalat în Android · rapid, dar mai robotic',
+                  style: Theme.of(context).textTheme.bodySmall,
                 ),
                 const SizedBox(height: 24),
                 Text('Stil și intonație', style: Theme.of(context).textTheme.titleMedium),
@@ -210,7 +261,29 @@ class _ReaderScreenState extends State<ReaderScreen> {
                 ),
                 const SizedBox(height: 20),
                 if (_session.isStudio) ...[
-                  Text('Voce Studio', style: Theme.of(context).textTheme.titleMedium),
+                  Card(
+                    color: Theme.of(context).colorScheme.errorContainer,
+                    child: const Padding(
+                      padding: EdgeInsets.all(14),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(Icons.warning_amber_rounded),
+                          SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              'Premium generează cost. Nu există preîncărcare automată și schimbarea vitezei nu mai regenerează vocea.',
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Text(
+                    'Voce OpenAI',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
                   const SizedBox(height: 10),
                   DropdownButtonFormField<String>(
                     initialValue: _session.book.studioVoice,
@@ -229,6 +302,57 @@ class _ReaderScreenState extends State<ReaderScreen> {
                     onChanged: (value) {
                       if (value != null) _session.setStudioVoice(value);
                     },
+                  ),
+                ] else if (_session.isLocalNeural) ...[
+                  Text(
+                    'Voce neurală locală',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 10),
+                  DropdownButtonFormField<String>(
+                    initialValue: _session.book.localVoice,
+                    isExpanded: true,
+                    decoration: const InputDecoration(
+                      prefixIcon: Icon(Icons.spatial_audio_rounded),
+                    ),
+                    items: [
+                      for (final voice in LocalNeuralSpeechService.voices)
+                        DropdownMenuItem(
+                          value: voice.id,
+                          child: Text(
+                            '${voice.label} · ${voice.description}',
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                    ],
+                    onChanged: (value) {
+                      if (value != null) _session.setLocalVoice(value);
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  if (_session.isPreparingBook) ...[
+                    LinearProgressIndicator(
+                      value: _session.preparationProgress,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Carte pregătită ${(100 * _session.preparationProgress).round()}%',
+                    ),
+                  ] else
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: _prepareBook,
+                        icon: const Icon(Icons.offline_pin_outlined),
+                        label: const Text('Pregătește toată cartea offline'),
+                      ),
+                    ),
+                  SizedBox(
+                    width: double.infinity,
+                    child: TextButton(
+                      onPressed: _openSettings,
+                      child: const Text('Descarcă sau testează modelul local'),
+                    ),
                   ),
                 ] else ...[
                   Text('Vocea telefonului', style: Theme.of(context).textTheme.titleMedium),
@@ -257,6 +381,16 @@ class _ReaderScreenState extends State<ReaderScreen> {
                     },
                   ),
                 ],
+                const SizedBox(height: 14),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: _session.book.autoDirector,
+                  onChanged: _session.setAutoDirector,
+                  title: const Text('Regie automată'),
+                  subtitle: const Text(
+                    'Păstrează stilul potrivit tipului de document și punctuației.',
+                  ),
+                ),
                 const SizedBox(height: 22),
                 SizedBox(
                   width: double.infinity,
@@ -271,6 +405,164 @@ class _ReaderScreenState extends State<ReaderScreen> {
         ),
       ),
     );
+  }
+
+  String get _engineLabel {
+    switch (_session.book.engine) {
+      case ReadingEngine.offline:
+        return 'Vocea telefonului';
+      case ReadingEngine.localNeural:
+        return 'Neural local · ${_session.book.localVoice}';
+      case ReadingEngine.openAiPremium:
+        return 'Premium · ${_session.book.studioVoice}';
+    }
+  }
+
+  Future<void> _selectEngine(ReadingEngine engine) async {
+    if (engine == ReadingEngine.openAiPremium) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Folosești OpenAI Premium?'),
+          content: const Text(
+            'Fiecare fragment nou consumă credit API. Pentru lectura zilnică recomand Neural local, care nu costă pe minut.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Rămân pe local'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Continuă Premium'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
+    }
+    await _session.setEngine(engine);
+    if (engine == ReadingEngine.localNeural &&
+        !await LocalNeuralSpeechService.modelsReady() &&
+        mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text(
+            'Modelul neural trebuie descărcat o singură dată.',
+          ),
+          action: SnackBarAction(label: 'Setări', onPressed: _openSettings),
+        ),
+      );
+    }
+  }
+
+  Future<void> _prepareBook() async {
+    try {
+      await _session.prepareWholeBook();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Cartea este pregătită integral pentru ascultare offline.'),
+        ),
+      );
+    } on Object catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.toString())),
+      );
+    }
+  }
+
+  Future<void> _showChapters() async {
+    final chapters = _session.book.chapters;
+    if (chapters.isEmpty) return;
+    final selected = await showModalBottomSheet<int>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: SizedBox(
+          height: MediaQuery.sizeOf(context).height * 0.68,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+                child: Text(
+                  'Capitole',
+                  style: Theme.of(context).textTheme.headlineSmall,
+                ),
+              ),
+              const Divider(height: 1),
+              Expanded(
+                child: ListView.builder(
+                  itemCount: chapters.length,
+                  itemBuilder: (context, index) {
+                    final chapter = chapters[index];
+                    final active = _session.book
+                            .chapterAt(_session.currentCharacter)
+                            ?.start ==
+                        chapter.start;
+                    return ListTile(
+                      selected: active,
+                      leading: CircleAvatar(child: Text('${index + 1}')),
+                      title: Text(chapter.title),
+                      trailing: active
+                          ? const Icon(Icons.graphic_eq_rounded)
+                          : null,
+                      onTap: () => Navigator.pop(context, chapter.start),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (selected != null) await _session.seekToCharacter(selected);
+  }
+
+  Future<void> _showSleepTimer() async {
+    final duration = await showModalBottomSheet<Duration>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Temporizator de somn',
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+              const SizedBox(height: 12),
+              for (final minutes in const [15, 30, 45, 60])
+                ListTile(
+                  leading: const Icon(Icons.timer_outlined),
+                  title: Text('$minutes minute'),
+                  onTap: () =>
+                      Navigator.pop(context, Duration(minutes: minutes)),
+                ),
+              if (_session.sleepEndsAt != null)
+                ListTile(
+                  leading: const Icon(Icons.timer_off_outlined),
+                  title: const Text('Oprește temporizatorul'),
+                  onTap: () => Navigator.pop(context, Duration.zero),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (!mounted) return;
+    if (duration == Duration.zero) {
+      await _session.setSleepTimer(null);
+    } else if (duration != null) {
+      await _session.setSleepTimer(duration);
+    }
   }
 
   String get _deviceVoiceKey {

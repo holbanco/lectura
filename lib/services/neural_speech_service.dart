@@ -93,7 +93,9 @@ class NeuralSpeechService {
     }
     await _cacheDirectory.create(recursive: true);
     final digest = sha256
-        .convert(utf8.encode('$voice|${preset.key}|$preferredRate|$text'))
+        // Playback speed is applied locally. It must not create and charge for
+        // a second copy of the exact same narration.
+        .convert(utf8.encode('openai-v2|$voice|${preset.key}|$text'))
         .toString()
         .substring(0, 28);
     final output = File(path.join(_cacheDirectory.path, '${bookId}_$digest.mp3'));
@@ -116,7 +118,7 @@ class NeuralSpeechService {
               'model': 'gpt-4o-mini-tts',
               'voice': voices.contains(voice) ? voice : 'marin',
               'input': text,
-              'instructions': _instructions(preset, preferredRate),
+              'instructions': _instructions(preset),
               'response_format': 'mp3',
             }),
           )
@@ -145,13 +147,8 @@ class NeuralSpeechService {
     return output;
   }
 
-  static String _instructions(NarrationPreset preset, double rate) {
-    final cadence = rate < 0.9
-        ? 'Use a relaxed, unhurried cadence.'
-        : rate > 1.15
-            ? 'Use a brisk cadence while remaining natural and fully intelligible.'
-            : 'Use a natural audiobook cadence.';
-    return '${preset.studioInstructions} $cadence '
+  static String _instructions(NarrationPreset preset) {
+    return '${preset.studioInstructions} Use a natural audiobook cadence. '
         'Speak in the same language as the supplied text. Read every supplied word '
         'faithfully; do not summarize, translate, add commentary, or announce these instructions. '
         'Pronounce Romanian diacritics, names, numbers, punctuation and abbreviations carefully.';

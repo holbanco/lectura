@@ -30,6 +30,10 @@ android {
         release {
             // Sideload builds use the local debug key until a private release key is configured.
             signingConfig = signingConfigs.getByName("debug")
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
         }
     }
 }

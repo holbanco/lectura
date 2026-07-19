@@ -146,6 +146,7 @@ class ReaderSession extends ChangeNotifier {
         await _playGenerated();
       }
     } on Object catch (error) {
+      _audioFutures.remove(_chunkIndex);
       _status = PlaybackStatus.error;
       _errorMessage = error.toString();
       _safeNotify();

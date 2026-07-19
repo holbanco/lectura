@@ -457,6 +457,26 @@ class _ReaderScreenState extends State<ReaderScreen> {
   }
 
   Future<void> _prepareBook() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Pregătești toată cartea?'),
+        content: const Text(
+          'Audio neural necomprimat poate ocupa între aproximativ 500 MB și 1,5 GB pentru o carte lungă. Poți asculta fluid și fără această pregătire: aplicația memorează automat fragmentele pe măsură ce citește.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Anulează'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Pregătește'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
     try {
       await _session.prepareWholeBook();
       if (!mounted) return;

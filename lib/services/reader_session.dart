@@ -401,7 +401,7 @@ class ReaderSession extends ChangeNotifier {
     final queuedIndex = _queuedChunks.indexOf(_chunkIndex);
     if (queuedIndex >= 0 &&
         _player.processingState != ProcessingState.completed) {
-      await _player.seek(index: queuedIndex);
+      await _player.seek(Duration.zero, index: queuedIndex);
       await _player.setSpeed(_playbackRate);
       _status = PlaybackStatus.playing;
       _safeNotify();

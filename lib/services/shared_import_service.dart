@@ -30,7 +30,7 @@ class SharedImportService {
   Future<SharedDocument?> initialize() async {
     if (!_configured) {
       _configured = true;
-      await _channel.setMethodCallHandler((call) async {
+      _channel.setMethodCallHandler((call) async {
         if (call.method != 'importDocument' || call.arguments is! Map) return;
         final document = SharedDocument.fromMap(
           (call.arguments as Map).cast<Object?, Object?>(),

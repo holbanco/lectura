@@ -1,6 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:just_audio/just_audio.dart';
 
 import '../core/app_theme.dart';
+import '../models/narration_preset.dart';
 import '../services/library_repository.dart';
 import '../services/neural_speech_service.dart';
 
@@ -17,9 +21,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     cacheDirectory: widget.repository.audioDirectory,
   );
   final TextEditingController _keyController = TextEditingController();
+  final AudioPlayer _testPlayer = AudioPlayer();
   String? _maskedKey;
   int _cacheBytes = 0;
   bool _saving = false;
+  bool _testing = false;
 
   @override
   void initState() {
@@ -94,6 +100,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     child: FilledButton(
                       onPressed: _saving ? null : _saveKey,
                       child: Text(_saving ? 'Se salvează…' : 'Salvează cheia'),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: _maskedKey == null || _saving || _testing
+                          ? null
+                          : _testStudioVoice,
+                      icon: _testing
+                          ? const SizedBox.square(
+                              dimension: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.play_circle_outline_rounded),
+                      label: Text(
+                        _testing ? 'Se testează…' : 'Testează vocea Studio',
+                      ),
                     ),
                   ),
                   if (_maskedKey != null)
@@ -191,6 +215,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _show('Cheia a fost eliminată.');
   }
 
+  Future<void> _testStudioVoice() async {
+    setState(() => _testing = true);
+    try {
+      final file = await _speech.audioFor(
+        bookId: 'studio_test',
+        text: 'Salut! Vocea Studio este configurată și funcționează corect.',
+        voice: 'marin',
+        preset: NarrationPreset.neutral,
+        preferredRate: 1,
+        forceRefresh: true,
+      );
+      await _testPlayer.setFilePath(file.path);
+      await _testPlayer.play();
+      _show('Test reușit. Vocea Studio este pregătită.');
+    } on Object catch (error) {
+      _show(error.toString());
+    } finally {
+      if (mounted) setState(() => _testing = false);
+    }
+  }
+
   Future<void> _clearCache() async {
     final bytes = await widget.repository.clearAudioCache();
     await _load();
@@ -211,6 +256,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void dispose() {
     _keyController.dispose();
+    unawaited(_testPlayer.dispose());
     _speech.dispose();
     super.dispose();
   }

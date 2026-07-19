@@ -16,4 +16,14 @@ void main() {
       'O aplicație utilă.',
     );
   });
+
+  test('repairs legacy Romanian diacritics in old PDFs', () {
+    const source = 'În sfârşit nefumãtor. EdiŃia a treia este pentru cei care '
+        'vor să se lase de ţigări şi să citească în română.';
+    expect(
+      DocumentImporter.normalizeText(source),
+      'În sfârșit nefumător. Ediția a treia este pentru cei care '
+      'vor să se lase de țigări și să citească în română.',
+    );
+  });
 }

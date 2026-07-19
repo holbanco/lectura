@@ -61,8 +61,14 @@ class LibraryRepository {
     return book;
   }
 
-  Future<String> readText(BookDocument book) {
-    return File(path.join(_textDirectory.path, book.textFileName)).readAsString();
+  Future<String> readText(BookDocument book) async {
+    final file = File(path.join(_textDirectory.path, book.textFileName));
+    final original = await file.readAsString();
+    final normalized = DocumentImporter.normalizeText(original);
+    if (normalized != original) {
+      await file.writeAsString(normalized, flush: true);
+    }
+    return normalized;
   }
 
   Future<void> update(BookDocument updated) async {

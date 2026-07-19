@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -84,6 +85,7 @@ class NeuralSpeechService {
     required String voice,
     required NarrationPreset preset,
     required double preferredRate,
+    bool forceRefresh = false,
   }) async {
     final key = await _storage.read(key: _apiKeyName);
     if (key == null || key.trim().isEmpty) {
@@ -95,24 +97,43 @@ class NeuralSpeechService {
         .toString()
         .substring(0, 28);
     final output = File(path.join(_cacheDirectory.path, '${bookId}_$digest.mp3'));
-    if (await output.exists() && await output.length() > 1024) return output;
+    if (!forceRefresh &&
+        await output.exists() &&
+        await output.length() > 1024) {
+      return output;
+    }
 
-    final response = await _client
-        .post(
-          Uri.parse('https://api.openai.com/v1/audio/speech'),
-          headers: {
-            HttpHeaders.authorizationHeader: 'Bearer $key',
-            HttpHeaders.contentTypeHeader: 'application/json',
-          },
-          body: jsonEncode({
-            'model': 'gpt-4o-mini-tts',
-            'voice': voices.contains(voice) ? voice : 'marin',
-            'input': text,
-            'instructions': _instructions(preset, preferredRate),
-            'response_format': 'mp3',
-          }),
-        )
-        .timeout(const Duration(seconds: 90));
+    late final http.Response response;
+    try {
+      response = await _client
+          .post(
+            Uri.parse('https://api.openai.com/v1/audio/speech'),
+            headers: {
+              HttpHeaders.authorizationHeader: 'Bearer $key',
+              HttpHeaders.contentTypeHeader: 'application/json',
+            },
+            body: jsonEncode({
+              'model': 'gpt-4o-mini-tts',
+              'voice': voices.contains(voice) ? voice : 'marin',
+              'input': text,
+              'instructions': _instructions(preset, preferredRate),
+              'response_format': 'mp3',
+            }),
+          )
+          .timeout(const Duration(seconds: 90));
+    } on TimeoutException {
+      throw const SpeechGenerationException(
+        'Serviciul Studio nu a răspuns la timp. Verifică internetul și încearcă din nou.',
+      );
+    } on SocketException {
+      throw const SpeechGenerationException(
+        'Telefonul nu se poate conecta la serviciul Studio. Verifică internetul.',
+      );
+    } on http.ClientException {
+      throw const SpeechGenerationException(
+        'Conexiunea către serviciul Studio a fost întreruptă.',
+      );
+    }
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw SpeechGenerationException(_friendlyError(response));
@@ -138,17 +159,31 @@ class NeuralSpeechService {
 
   static String _friendlyError(http.Response response) {
     var detail = '';
+    var code = '';
     try {
       final decoded = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
       final error = decoded['error'];
-      if (error is Map<String, dynamic>) detail = error['message'] as String? ?? '';
+      if (error is Map<String, dynamic>) {
+        detail = error['message'] as String? ?? '';
+        code = error['code']?.toString() ?? '';
+      }
     } on Object {
       // The response may be audio/proxy text rather than JSON.
     }
     if (response.statusCode == 401) {
       return 'Cheia Studio nu este validă sau a fost revocată.';
     }
+    if (response.statusCode == 403) {
+      return detail.isEmpty
+          ? 'Cheia Studio nu are acces la modelul vocal.'
+          : 'Acces Studio refuzat: $detail';
+    }
     if (response.statusCode == 429) {
+      if (code == 'insufficient_quota' ||
+          detail.toLowerCase().contains('quota') ||
+          detail.toLowerCase().contains('billing')) {
+        return 'Contul API nu are credit disponibil. Adaugă credit în OpenAI Platform Billing.';
+      }
       return 'Limita serviciului vocal a fost atinsă. Încearcă din nou puțin mai târziu.';
     }
     if (response.statusCode >= 500) {

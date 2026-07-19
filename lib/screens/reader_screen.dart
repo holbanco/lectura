@@ -24,6 +24,13 @@ class _ReaderScreenState extends State<ReaderScreen> {
   );
   late final Future<void> _initialization = _session.initialize();
   double? _seekPreview;
+  String? _lastShownError;
+
+  @override
+  void initState() {
+    super.initState();
+    _session.addListener(_showNewSessionError);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -91,6 +98,13 @@ class _ReaderScreenState extends State<ReaderScreen> {
                       ),
                     ],
                   ),
+                  if (_session.errorMessage != null) ...[
+                    const SizedBox(height: 22),
+                    _ErrorCard(
+                      message: _session.errorMessage!,
+                      onSettings: _openSettings,
+                    ),
+                  ],
                   const SizedBox(height: 28),
                   Text(
                     'Fragment ${_session.currentChunkIndex + 1} din ${_session.chunks.length}',
@@ -98,13 +112,6 @@ class _ReaderScreenState extends State<ReaderScreen> {
                   ),
                   const SizedBox(height: 12),
                   _NarratedText(session: _session),
-                  if (_session.errorMessage != null) ...[
-                    const SizedBox(height: 24),
-                    _ErrorCard(
-                      message: _session.errorMessage!,
-                      onSettings: _openSettings,
-                    ),
-                  ],
                   if (_session.isStudio) ...[
                     const SizedBox(height: 22),
                     Row(
@@ -284,8 +291,32 @@ class _ReaderScreenState extends State<ReaderScreen> {
     ));
   }
 
+  void _showNewSessionError() {
+    final message = _session.errorMessage;
+    if (message == null) {
+      _lastShownError = null;
+      return;
+    }
+    if (!mounted || message == _lastShownError) return;
+    _lastShownError = message;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _session.errorMessage != message) return;
+      final messenger = ScaffoldMessenger.of(context);
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(message),
+            duration: const Duration(seconds: 10),
+            action: SnackBarAction(label: 'Setări', onPressed: _openSettings),
+          ),
+        );
+    });
+  }
+
   @override
   void dispose() {
+    _session.removeListener(_showNewSessionError);
     _session.dispose();
     super.dispose();
   }

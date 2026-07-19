@@ -249,7 +249,7 @@ class DocumentImporter {
   }
 
   static String normalizeText(String input) {
-    return input
+    var normalized = input
         .replaceAll('\r\n', '\n')
         .replaceAll('\r', '\n')
         .replaceAll(RegExp(r'[ \t]+'), ' ')
@@ -260,6 +260,36 @@ class DocumentImporter {
           (match) => '${match[1]}${match[2]}',
         )
         .trim();
+    if (_looksLikeLegacyRomanian(normalized)) {
+      normalized = normalized
+          .replaceAll('Ń', 'Ț')
+          .replaceAll('ń', 'ț')
+          .replaceAll('Ţ', 'Ț')
+          .replaceAll('ţ', 'ț')
+          .replaceAll('Ş', 'Ș')
+          .replaceAll('ş', 'ș')
+          .replaceAll('Ã', 'Ă')
+          .replaceAll('ã', 'ă');
+    }
+    return normalized;
+  }
+
+  static bool _looksLikeLegacyRomanian(String text) {
+    if (!RegExp('[ŃńŢţŞşÃã]').hasMatch(text)) return false;
+    final sample = ' ${text.toLowerCase()} ';
+    const markers = [
+      ' și ',
+      ' şi ',
+      ' este ',
+      ' sunt ',
+      ' pentru ',
+      ' care ',
+      ' din ',
+      ' cu ',
+      ' la ',
+      ' în ',
+    ];
+    return markers.where(sample.contains).length >= 3;
   }
 
   static String _titleFromFileName(String fileName) {

@@ -54,6 +54,7 @@ class LocalNeuralSpeechService {
   SupertonicTTS? _tts;
   Future<void>? _initializing;
   Future<void> _serial = Future<void>.value();
+  bool _disposeRequested = false;
 
   static Future<bool> modelsReady() => SupertonicTTS.modelsReady();
 
@@ -70,6 +71,11 @@ class LocalNeuralSpeechService {
     required String voice,
     required NarrationPreset preset,
   }) async {
+    if (_disposeRequested) {
+      throw const LocalNeuralSpeechException(
+        'Sesiunea vocii locale a fost închisă.',
+      );
+    }
     if (!await modelsReady()) throw const LocalModelMissingException();
     await _cacheDirectory.create(recursive: true);
     final safeVoice = voices.any((option) => option.id == voice) ? voice : 'F2';
@@ -153,7 +159,10 @@ class LocalNeuralSpeechService {
   }
 
   void dispose() {
-    _tts?.dispose();
-    _tts = null;
+    _disposeRequested = true;
+    unawaited(_serial.whenComplete(() {
+      _tts?.dispose();
+      _tts = null;
+    }));
   }
 }

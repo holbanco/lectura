@@ -154,6 +154,11 @@ class ReaderSession extends ChangeNotifier {
   }
 
   Future<void> pause() async {
+    if (_status == PlaybackStatus.loading && usesGeneratedAudio) {
+      // A synthesis already in flight may finish after the user taps Pause.
+      // Invalidating this start token prevents it from beginning playback.
+      _generationEpoch++;
+    }
     _manualStop = true;
     if (_book.engine == ReadingEngine.offline) {
       await _offlineTts.stop();
@@ -351,7 +356,8 @@ class ReaderSession extends ChangeNotifier {
     try {
       for (var index = 0; index < _chunks.length; index++) {
         if (_book.engine != ReadingEngine.localNeural ||
-            preparationEpoch != _generationEpoch) {
+            preparationEpoch != _generationEpoch ||
+            _disposed) {
           throw const LocalNeuralSpeechException(
             'Pregătirea cărții a fost oprită.',
           );
@@ -715,6 +721,7 @@ class ReaderSession extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _generationEpoch++;
     _sleepTimer?.cancel();
     for (final subscription in _subscriptions) {
       unawaited(subscription.cancel());

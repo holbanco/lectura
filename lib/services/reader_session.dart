@@ -344,10 +344,24 @@ class ReaderSession extends ChangeNotifier {
     }
     _preparingBook = true;
     _preparationProgress = 0;
+    final preparationEpoch = _generationEpoch;
+    final voice = _book.localVoice;
     _safeNotify();
     try {
       for (var index = 0; index < _chunks.length; index++) {
-        await _audioForChunk(index);
+        if (_book.engine != ReadingEngine.localNeural ||
+            preparationEpoch != _generationEpoch) {
+          throw const LocalNeuralSpeechException(
+            'Pregătirea cărții a fost oprită.',
+          );
+        }
+        final chunk = _chunks[index];
+        await localSpeech.audioFor(
+          bookId: _book.id,
+          text: chunk.text,
+          voice: voice,
+          preset: _directedPreset(chunk),
+        );
         _preparationProgress = (index + 1) / _chunks.length;
         _safeNotify();
       }
@@ -401,7 +415,9 @@ class ReaderSession extends ChangeNotifier {
     final queuedIndex = _queuedChunks.indexOf(_chunkIndex);
     if (queuedIndex >= 0 &&
         _player.processingState != ProcessingState.completed) {
-      await _player.seek(Duration.zero, index: queuedIndex);
+      if (_player.currentIndex != queuedIndex) {
+        await _player.seek(Duration.zero, index: queuedIndex);
+      }
       await _player.setSpeed(_playbackRate);
       _status = PlaybackStatus.playing;
       _safeNotify();
@@ -462,22 +478,39 @@ class ReaderSession extends ChangeNotifier {
   Future<File> _audioForChunk(int index) {
     return _audioFutures.putIfAbsent(index, () {
       final chunk = _chunks[index];
+      final directedPreset = _directedPreset(chunk);
       if (_book.engine == ReadingEngine.localNeural) {
         return localSpeech.audioFor(
           bookId: _book.id,
           text: chunk.text,
           voice: _book.localVoice,
-          preset: _book.preset,
+          preset: directedPreset,
         );
       }
       return neuralSpeech.audioFor(
         bookId: _book.id,
         text: chunk.text,
         voice: _book.studioVoice,
-        preset: _book.preset,
+        preset: directedPreset,
         preferredRate: 1,
       );
     });
+  }
+
+  NarrationPreset _directedPreset(TextChunk chunk) {
+    if (!_book.autoDirector ||
+        _book.preset == NarrationPreset.technical ||
+        _book.preset == NarrationPreset.evening) {
+      return _book.preset;
+    }
+    final dialogueMarks = RegExp('[„”«»\"]|(^|\n)\\s*[—–-]\\s+')
+        .allMatches(chunk.text)
+        .length;
+    final emotionalMarks = RegExp('[!?…]').allMatches(chunk.text).length;
+    if (dialogueMarks >= 4 || emotionalMarks >= 5) {
+      return NarrationPreset.dramatic;
+    }
+    return _book.preset;
   }
 
   AudioSource _sourceFor(int chunkIndex, File file) {

@@ -10,6 +10,7 @@ import 'package:just_audio/just_audio.dart';
 import '../models/book_document.dart';
 import '../models/narration_preset.dart';
 import '../models/text_chunk.dart';
+import 'app_audio_player.dart';
 import 'library_repository.dart';
 import 'local_neural_speech_service.dart';
 import 'neural_speech_service.dart';
@@ -45,7 +46,7 @@ class ReaderSession extends ChangeNotifier {
   final NeuralSpeechService neuralSpeech;
   final LocalNeuralSpeechService localSpeech;
   final FlutterTts _offlineTts = FlutterTts();
-  final AudioPlayer _player = AudioPlayer();
+  final AudioPlayer _player = AppAudioPlayer.instance;
   final List<StreamSubscription<Object?>> _subscriptions = [];
   final List<int> _queuedChunks = [];
   final Map<int, Future<File>> _audioFutures = {};
@@ -166,6 +167,16 @@ class ReaderSession extends ChangeNotifier {
       await _player.pause();
     }
     _manualStop = false;
+    _status = PlaybackStatus.paused;
+    await _persistProgress();
+    _safeNotify();
+  }
+
+  /// Frees the shared background player before Settings plays a voice preview.
+  /// The queue is rebuilt from the persisted position on the next Play tap.
+  Future<void> releaseAudioPlayerForPreview() async {
+    if (!_initialized || _disposed) return;
+    await _stopActive();
     _status = PlaybackStatus.paused;
     await _persistProgress();
     _safeNotify();
@@ -722,12 +733,17 @@ class ReaderSession extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     _generationEpoch++;
+    _status = PlaybackStatus.paused;
+    _manualStop = true;
     _sleepTimer?.cancel();
     for (final subscription in _subscriptions) {
       unawaited(subscription.cancel());
     }
     unawaited(_offlineTts.stop());
-    unawaited(_player.dispose());
+    unawaited(_player.stop());
+    _queuedChunks.clear();
+    _audioFutures.clear();
+    _fillingBuffer = false;
     neuralSpeech.dispose();
     localSpeech.dispose();
     if (_initialized) unawaited(_persistProgress());

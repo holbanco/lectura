@@ -1,18 +1,25 @@
 import 'dart:async';
 
+import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 
 import '../core/app_theme.dart';
 import '../models/narration_preset.dart';
+import '../services/app_audio_player.dart';
 import '../services/library_repository.dart';
 import '../services/local_neural_speech_service.dart';
 import '../services/neural_speech_service.dart';
 
 class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({required this.repository, super.key});
+  const SettingsScreen({
+    required this.repository,
+    this.beforeAudioPreview,
+    super.key,
+  });
 
   final LibraryRepository repository;
+  final Future<void> Function()? beforeAudioPreview;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -26,7 +33,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     cacheDirectory: widget.repository.audioDirectory,
   );
   final TextEditingController _keyController = TextEditingController();
-  final AudioPlayer _testPlayer = AudioPlayer();
+  final AudioPlayer _testPlayer = AppAudioPlayer.instance;
   String? _maskedKey;
   String _downloadLabel = '';
   double _downloadProgress = 0;
@@ -119,7 +126,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     width: double.infinity,
                     child: _localReady
                         ? OutlinedButton.icon(
-                            onPressed: _testingLocal ? null : _testLocalVoice,
+                            onPressed: _testingLocal || _testingPremium
+                                ? null
+                                : _testLocalVoice,
                             icon: _testingLocal
                                 ? const SizedBox.square(
                                     dimension: 18,
@@ -192,7 +201,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   child: OutlinedButton.icon(
                     onPressed: _maskedKey == null ||
                             _saving ||
-                            _testingPremium
+                            _testingPremium ||
+                            _testingLocal
                         ? null
                         : _testStudioVoice,
                     icon: _testingPremium
@@ -340,6 +350,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _testLocalVoice() async {
     setState(() => _testingLocal = true);
     try {
+      await widget.beforeAudioPreview?.call();
       final file = await _localSpeech.audioFor(
         bookId: 'local_test',
         text:
@@ -347,8 +358,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
         voice: 'F2',
         preset: NarrationPreset.fiction,
       );
-      await _testPlayer.setFilePath(file.path);
-      await _testPlayer.play();
+      await _playPreview(
+        filePath: file.path,
+        title: 'Test voce Mara',
+        artist: 'Lectura · Neural local',
+      );
     } on Object catch (error) {
       _show(error.toString());
     } finally {
@@ -383,6 +397,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _testStudioVoice() async {
     setState(() => _testingPremium = true);
     try {
+      await widget.beforeAudioPreview?.call();
       final file = await _speech.audioFor(
         bookId: 'studio_test',
         text: 'Salut! Acesta este un test scurt pentru vocea Fable.',
@@ -391,14 +406,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
         preferredRate: 1,
         forceRefresh: true,
       );
-      await _testPlayer.setFilePath(file.path);
-      await _testPlayer.play();
+      await _playPreview(
+        filePath: file.path,
+        title: 'Test voce Fable',
+        artist: 'Lectura · OpenAI Premium',
+      );
       _show('Test reușit. Fable este disponibilă.');
     } on Object catch (error) {
       _show(error.toString());
     } finally {
       if (mounted) setState(() => _testingPremium = false);
     }
+  }
+
+  Future<void> _playPreview({
+    required String filePath,
+    required String title,
+    required String artist,
+  }) async {
+    await _testPlayer.stop();
+    await _testPlayer.setAudioSource(
+      AudioSource.file(
+        filePath,
+        tag: MediaItem(
+          id: 'voice-preview:${filePath.hashCode}',
+          title: title,
+          album: 'Previzualizare voce',
+          artist: artist,
+        ),
+      ),
+    );
+    await _testPlayer.setSpeed(1);
+    await _testPlayer.play();
   }
 
   Future<void> _clearCache() async {
@@ -421,7 +460,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void dispose() {
     _keyController.dispose();
-    unawaited(_testPlayer.dispose());
+    unawaited(_testPlayer.stop());
     _speech.dispose();
     _localSpeech.dispose();
     super.dispose();

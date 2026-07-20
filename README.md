@@ -2,6 +2,11 @@
 
 Lectura este o aplicație personală Android-first care transformă cărți și documente în audio. Codul Flutter este comun pentru Android și iPhone.
 
+Versiunea 1.0.1 folosește un singur player audio partajat pentru cititor și
+previzualizările de voce, conform cerinței `just_audio_background`. Astfel,
+testele Mara/Fable pot fi pornite și din cititor fără eroarea „single player
+instance”; progresul cărții este salvat înaintea previzualizării.
+
 ## Ce funcționează în versiunea 1.0
 
 - import local pentru PDF, EPUB, DOCX, TXT, Markdown, HTML și imagini;

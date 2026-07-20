@@ -599,7 +599,10 @@ class _ReaderScreenState extends State<ReaderScreen> {
 
   Future<void> _openSettings() async {
     await Navigator.of(context).push(MaterialPageRoute<void>(
-      builder: (_) => SettingsScreen(repository: widget.repository),
+      builder: (_) => SettingsScreen(
+        repository: widget.repository,
+        beforeAudioPreview: _session.releaseAudioPlayerForPreview,
+      ),
     ));
   }
 
